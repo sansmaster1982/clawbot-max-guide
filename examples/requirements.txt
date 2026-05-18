@@ -1,0 +1,5 @@
+httpx>=0.27
+msgpack>=1.0
+
+# Optional: для mcp_server_stub.py
+# pip install mcp

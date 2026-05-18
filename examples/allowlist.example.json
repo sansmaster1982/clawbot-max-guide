@@ -1,0 +1,23 @@
+{
+  "_comment": "Copy this to allowlist.json (gitignored) and edit. Listener перечитывает на каждое входящее сообщение.",
+  "autoreply": [
+    "// Сюда положите user_id людей которым бот авто-отвечает с контекстом."
+  ],
+  "contexts": {
+    "//user_id": {
+      "type": "booking | meeting | follow-up | info | scheduling | general",
+      "details": "Описание задачи, которую решает бот в этом разговоре. Уходит в system prompt LLM."
+    },
+    "12345678": {
+      "type": "booking",
+      "details": "столик на 2, завтра 19:00, имя для брони"
+    },
+    "87654321": {
+      "type": "meeting",
+      "details": "согласовать встречу по проекту X, 15-30 минут на следующей неделе"
+    }
+  },
+  "blocked": [
+    "// Сюда положите user_id тех, чьи сообщения listener должен молча игнорировать."
+  ]
+}
