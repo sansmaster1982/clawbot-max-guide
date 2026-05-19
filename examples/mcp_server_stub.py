@@ -42,6 +42,7 @@ from mcp.types import TextContent, Tool
 HOST = "api.oneme.ru"
 PORT = 443
 PROTO_VER = 10
+APP_VERSION = "26.11.0"  # сверьте с актуальным max_cli если будет API-брэйкинг
 
 OP_INIT = 6
 OP_LOGIN = 19
@@ -50,6 +51,10 @@ OP_MSG_SEND = 64
 
 CID_MIN = 1_750_000_000_000
 CID_MAX = 2_000_000_000_000
+
+# Global packet counter. MAX correlates request/response через seq, поэтому
+# каждый исходящий пакет должен иметь уникальный возрастающий seq.
+_seq = 0
 
 
 # ----- пути на диске -----
@@ -63,16 +68,20 @@ ALLOWLIST_PATH = CONFIG_DIR / "allowlist.json"
 # ----- транспорт -----
 
 def _connect() -> _socket.socket:
+    global _seq
+    _seq = 0
     ctx = ssl.create_default_context()
-    sock = ctx.wrap_socket(_socket.socket(_socket.AF_INET), server_hostname=HOST)
-    sock.connect((HOST, PORT))
-    sock.settimeout(20)
+    raw = _socket.create_connection((HOST, PORT), timeout=30)
+    sock = ctx.wrap_socket(raw, server_hostname=HOST)
+    sock.settimeout(30)
     return sock
 
 
-def _send_packet(sock: _socket.socket, opcode: int, payload: dict, seq: int = 1) -> None:
-    body = msgpack.packb(payload, use_bin_type=False)
-    header = struct.pack(">BBHHI", PROTO_VER, 0, seq, opcode, len(body))
+def _send_packet(sock: _socket.socket, opcode: int, payload: dict) -> None:
+    global _seq
+    body = msgpack.packb(payload, use_bin_type=True)
+    header = struct.pack(">BBHHI", PROTO_VER, 0, _seq, opcode, len(body))
+    _seq += 1
     sock.sendall(header + body)
 
 
@@ -83,7 +92,10 @@ def _recv_packet(sock: _socket.socket) -> tuple[int, int, int, bytes]:
         if not chunk:
             raise ConnectionError("socket closed during header")
         header += chunk
-    _ver, cmd, seq, opcode, body_len = struct.unpack(">BBHHI", header)
+    _ver, cmd, seq, opcode, length_raw = struct.unpack(">BBHHI", header)
+    # Верхний байт length-поля это флаги (compression/encoding), не длина.
+    # Без маски при ненулевом флаге читали бы мегабайты несуществующих данных.
+    body_len = length_raw & 0x00FFFFFF
     body = b""
     while len(body) < body_len:
         chunk = sock.recv(body_len - len(body))
@@ -141,8 +153,8 @@ def _open_session() -> _socket.socket:
         _send_packet(sock, OP_INIT, {
             "userAgent": {
                 "deviceType": "ANDROID",
-                "locale": "ru_RU",
-                "appVersion": "25.6.1",
+                "locale": "ru",
+                "appVersion": APP_VERSION,
             },
             "deviceId": device_id,
         })
@@ -153,7 +165,7 @@ def _open_session() -> _socket.socket:
         _send_packet(sock, OP_LOGIN, {
             "token": token,
             "interactive": False,
-            "chatsCount": 0,
+            "chatsCount": 40,
             "chatsSync": 0,
             "contactsSync": 0,
             "presenceSync": 0,
